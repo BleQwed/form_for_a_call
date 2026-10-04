@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Анкета</title>
+<style>
+  :root{--bg:#0f1115;--card:#181b22;--text:#eef0f4;--muted:#9aa1b0;--accent:#4f8cff;--border:#2a2f3a;--err:#ff6b6b;--ok:#3ecf8e}
+  @media (prefers-color-scheme: light){:root{--bg:#f4f6fa;--card:#fff;--text:#161a22;--muted:#5d6575;--border:#dde2ec}}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);line-height:1.5}
+  .wrap{max-width:640px;margin:0 auto;padding:40px 20px 60px}
+  h1{font-size:clamp(28px,6vw,40px);line-height:1.15;margin:0 0 12px}
+  .sub{color:var(--muted);font-size:18px;margin:0 0 32px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:24px}
+  .q{margin-bottom:20px}
+  label{display:block;font-weight:600;margin-bottom:8px}
+  .req{color:var(--err)}
+  .hint{color:var(--muted);font-size:14px;margin:-4px 0 8px}
+  input,textarea{width:100%;font:inherit;color:var(--text);background:transparent;border:1px solid var(--border);border-radius:10px;padding:12px 14px;outline:none}
+  textarea{min-height:96px;resize:vertical}
+  input:focus,textarea:focus{border-color:var(--accent)}
+  .invalid input,.invalid textarea{border-color:var(--err)}
+  button{width:100%;font:inherit;font-weight:700;color:#fff;background:var(--accent);border:0;border-radius:10px;padding:14px;cursor:pointer}
+  button:disabled{opacity:.6;cursor:default}
+  .msg{margin-top:14px;font-size:15px;min-height:20px}
+  .msg.err{color:var(--err)} .msg.ok{color:var(--ok)}
+  .done{text-align:center;padding:20px 0}
+  .done h2{margin:0 0 8px}
+  .hp{position:absolute;left:-9999px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1 id="title"></h1>
+  <p class="sub" id="subtitle"></p>
+
+  <div class="card">
+    <form id="form" novalidate>
+      <div id="questions"></div>
+      <input class="hp" type="text" name="website" tabindex="-1" autocomplete="off">
+      <button type="submit" id="btn"></button>
+      <div class="msg" id="msg"></div>
+    </form>
+    <div class="done" id="done" hidden>
+      <h2 id="doneTitle"></h2>
+      <p class="sub" id="doneText" style="margin:0"></p>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============ НАСТРОЙКИ — ВСЁ МЕНЯЕТСЯ ЗДЕСЬ ============ */
+const CONFIG = {
+  title: "Анкета перед встречей",
+  subtitle: "Чтобы встреча прошла с пользой и я подготовился именно под тебя, ответь, пожалуйста, на 6 коротких вопросов. Это займёт 5–7 минут.",
+  buttonText: "Отправить анкету",
+  doneTitle: "Спасибо!",
+  doneText: "Я получил твои ответы и подготовлюсь к встрече.",
+
+  // type: "text" (короткая строка) или "textarea" (длинный ответ); hint — подсказка под вопросом
+  questions: [
+    { label: "Как тебя зовут?", placeholder: "Имя", type: "text", required: true },
+    { label: "Контакты для связи", hint: "Instagram или Telegram", placeholder: "@username", type: "text", required: true },
+    { label: "1. Расскажи коротко, как сейчас обстоят дела с трейдингом скинов", hint: "Что есть, что происходит, какие цифры, если они есть. В двух-трёх предложениях.", type: "textarea", required: true },
+    { label: "2. К чему хочешь прийти — и за какой срок?", hint: "Как выглядит результат, по которому ты поймёшь, что получилось. И что изменится в жизни, когда получится.", type: "textarea", required: true },
+    { label: "3. Что мешает прийти к этому больше всего?", hint: "Одна главная вещь. Где тупик.", type: "textarea", required: true },
+    { label: "4. Что уже пробовал — и что не сработало?", hint: "Курсы, специалисты, свои попытки. Почему, по-твоему, не получилось.", type: "textarea", required: true },
+    { label: "5. Почему решил разобраться с этим именно сейчас?", hint: "Что случилось или что надоело.", type: "textarea", required: true },
+    { label: "6. Что для тебя будет идеальным итогом нашей встречи?", hint: "С чем хочешь уйти: план, ответ на конкретный вопрос, решение.", type: "textarea", required: true }
+  ],
+
+  // Куда отправлять: "worker" (Telegram через Cloudflare Worker, токен скрыт), "telegram" (напрямую) или "email"
+  mode: "email",
+
+  worker: {
+    url: "https://ВАШ-WORKER.workers.dev"   // адрес после деплоя worker.js
+  },
+
+  telegram: {
+    // Токен бота от @BotFather и ваш chat_id (см. инструкцию ниже)
+    botToken: "ВАШ_ТОКЕН_БОТА",
+    chatId: "ВАШ_CHAT_ID"
+  },
+
+  email: {
+    // Бесплатный ключ на https://web3forms.com (вводите свою почту — ключ придёт на неё)
+    accessKey: "e625ea8c-1280-40ed-bfb7-f9eaa446b58f",
+    subject: "Новая анкета перед встречей"
+  }
+};
+/* ======================================================== */
+
+const $ = id => document.getElementById(id);
+document.title = CONFIG.title;
+$("title").textContent = CONFIG.title;
+$("subtitle").textContent = CONFIG.subtitle;
+$("btn").textContent = CONFIG.buttonText;
+
+const box = $("questions");
+CONFIG.questions.forEach((q, i) => {
+  const wrap = document.createElement("div");
+  wrap.className = "q";
+  const lab = document.createElement("label");
+  lab.htmlFor = "q" + i;
+  lab.textContent = q.label + (q.required ? " " : "");
+  if (q.required) { const s = document.createElement("span"); s.className = "req"; s.textContent = "*"; lab.appendChild(s); }
+  const field = document.createElement(q.type === "textarea" ? "textarea" : "input");
+  field.id = "q" + i;
+  if (q.type !== "textarea") field.type = "text";
+  field.placeholder = q.placeholder || "";
+  field.maxLength = 1000;
+  wrap.append(lab);
+  if (q.hint) { const h = document.createElement("div"); h.className = "hint"; h.textContent = q.hint; wrap.append(h); }
+  wrap.append(field);
+  box.appendChild(wrap);
+});
+
+function setMsg(text, cls) { const m = $("msg"); m.textContent = text; m.className = "msg " + (cls || ""); }
+
+async function send(answers) {
+  const lines = answers.map(a => `${a.q}\n${a.a || "—"}`);
+  const text = "📝 " + (CONFIG.mode === "email" ? CONFIG.email.subject : "Новая анкета") + "\n\n" + lines.join("\n\n");
+
+  if (CONFIG.mode === "worker") {
+    const r = await fetch(CONFIG.worker.url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text })
+    });
+    if (!r.ok) throw new Error("worker");
+  } else if (CONFIG.mode === "telegram") {
+    const r = await fetch(`https://api.telegram.org/bot${CONFIG.telegram.botToken}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: CONFIG.telegram.chatId, text })
+    });
+    const j = await r.json();
+    if (!j.ok) throw new Error("telegram");
+  } else {
+    const body = { access_key: CONFIG.email.accessKey, subject: CONFIG.email.subject, from_name: "Лендинг" };
+    answers.forEach(a => { body[a.q] = a.a || "—"; });
+    const r = await fetch("https://api.web3forms.com/submit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept": "application/json" },
+      body: JSON.stringify(body)
+    });
+    const j = await r.json();
+    if (!j.success) throw new Error("email");
+  }
+}
+
+$("form").addEventListener("submit", async e => {
+  e.preventDefault();
+  if (e.target.website.value) return; // антиспам-ловушка
+
+  let ok = true;
+  const answers = CONFIG.questions.map((q, i) => {
+    const el = $("q" + i), v = el.value.trim();
+    const bad = q.required && !v;
+    el.parentElement.classList.toggle("invalid", bad);
+    if (bad) ok = false;
+    return { q: q.label, a: v };
+  });
+  if (!ok) return setMsg("Заполните обязательные поля.", "err");
+
+  $("btn").disabled = true;
+  setMsg("Отправляем…");
+  try {
+    await send(answers);
+    $("form").hidden = true;
+    $("doneTitle").textContent = CONFIG.doneTitle;
+    $("doneText").textContent = CONFIG.doneText;
+    $("done").hidden = false;
+  } catch (err) {
+    setMsg("Не удалось отправить. Попробуйте ещё раз чуть позже.", "err");
+    $("btn").disabled = false;
+  }
+});
+</script>
+</body>
+</html>
